@@ -76,7 +76,7 @@ inputs:
   project-url:
     description: 'Project URL for notifications (e.g., https://example.com or repo name)'
     required: false
-    default: ${{ github.event.repository.name }}
+    default: ''
 
 runs:
   using: 'composite'
@@ -154,6 +154,14 @@ runs:
         COMMIT_URL="https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}"
         PROJECT_URL="${{ inputs.project-url }}"
 
+        # Use repo name and URL if project-url not provided
+        if [ -z "$PROJECT_URL" ]; then
+          PROJECT_URL="${{ github.event.repository.name }}"
+          PROJECT_LINK="https://github.com/${{ github.repository }}"
+        else
+          PROJECT_LINK="https://${PROJECT_URL}"
+        fi
+
         if [ "${{ job.status }}" == "success" ]; then
           # Array of deployment appreciation messages
           MESSAGES=(
@@ -186,7 +194,7 @@ runs:
           echo "SLACK_TITLE=:rocket: Deployment Successful" >> $GITHUB_ENV
           {
             echo 'SLACK_MESSAGE<<EOF'
-            echo "*Project:* <https://${PROJECT_URL}|${PROJECT_URL}>"
+            echo "*Project:* <${PROJECT_LINK}|${PROJECT_URL}>"
             echo "*Commit:* <$COMMIT_URL|$COMMIT_SHORT> - $COMMIT_MSG"
             echo "*Deployed by:* $ACTOR"
             echo "*Branch:* ${GITHUB_REF#refs/heads/}"
@@ -200,7 +208,7 @@ runs:
           echo "SLACK_TITLE=:x: Deployment Failed" >> $GITHUB_ENV
           {
             echo 'SLACK_MESSAGE<<EOF'
-            echo "*Project:* <https://${PROJECT_URL}|${PROJECT_URL}>"
+            echo "*Project:* <${PROJECT_LINK}|${PROJECT_URL}>"
             echo "*Commit:* <$COMMIT_URL|$COMMIT_SHORT> - $COMMIT_MSG"
             echo "*Deployed by:* $ACTOR"
             echo "*Branch:* ${GITHUB_REF#refs/heads/}"
