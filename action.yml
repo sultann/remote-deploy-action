@@ -1,0 +1,229 @@
+name: 'Remote Deploy Action'
+description: 'Deploy files to remote servers via SSH and rsync with build support and flexible exclusions'
+author: 'Sultan Nasir Uddin'
+branding:
+  icon: 'upload-cloud'
+  color: 'blue'
+
+inputs:
+  # SSH Connection
+  remote-host:
+    description: 'Remote server hostname or IP address'
+    required: true
+  remote-user:
+    description: 'Remote SSH username'
+    required: true
+  remote-key:
+    description: 'SSH private key content'
+    required: true
+  remote-port:
+    description: 'Remote SSH port'
+    required: false
+    default: '22'
+
+  # Deployment Paths
+  source-path:
+    description: 'Local source directory relative to workspace (e.g., ./ or dist/)'
+    required: false
+    default: './'
+  target-path:
+    description: 'Remote target directory (absolute path)'
+    required: true
+
+  # Exclusions
+  ignore-file:
+    description: 'Path to ignore file (.distignore, .deployignore, etc.)'
+    required: false
+    default: '.distignore'
+  exclude-paths:
+    description: 'Paths to exclude (comma or newline separated).'
+    required: false
+    default: '.*,tests,*.log'
+
+  # Scripts
+  script-before:
+    description: 'Script to run locally before deployment (npm build, composer install, etc.)'
+    required: false
+    default: ''
+  script-after:
+    description: 'Script to run on remote server after deployment (cache flush, migrations, etc.)'
+    required: false
+    default: ''
+
+  # Options
+  dry-run:
+    description: 'Preview deployment without actually deploying'
+    required: false
+    default: 'false'
+  rsync-options:
+    description: 'Custom rsync options'
+    required: false
+    default: '-avz --delete'
+
+  # Notifications
+  slack-webhook:
+    description: 'Slack webhook URL for notifications'
+    required: false
+    default: ''
+  slack-channel:
+    description: 'Slack channel to override webhook default (e.g., #deployments)'
+    required: false
+    default: ''
+  slack-notify:
+    description: 'When to send Slack notification: success, failure, or always'
+    required: false
+    default: 'success'
+  project-url:
+    description: 'Project URL for notifications (e.g., https://example.com or repo name)'
+    required: false
+    default: ${{ github.event.repository.name }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.remote-host }}" ]; then
+          echo "::error::remote-host is required"
+          exit 1
+        fi
+        if [ -z "${{ inputs.remote-user }}" ]; then
+          echo "::error::remote-user is required"
+          exit 1
+        fi
+        if [ -z "${{ inputs.remote-key }}" ]; then
+          echo "::error::remote-key is required"
+          exit 1
+        fi
+        if [ -z "${{ inputs.target-path }}" ]; then
+          echo "::error::target-path is required"
+          exit 1
+        fi
+
+    - name: Run script before deployment
+      if: inputs.script-before != ''
+      shell: bash
+      run: |
+        echo "::group::Running script before deployment"
+        ${{ inputs.script-before }}
+        echo "::endgroup::"
+
+    - name: Setup SSH connection
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ inputs.remote-key }}
+        config: |
+          Host remote-server
+            HostName ${{ inputs.remote-host }}
+            User ${{ inputs.remote-user }}
+            Port ${{ inputs.remote-port }}
+            IdentityFile ~/.ssh/id_rsa
+            HostKeyAlgorithms +ssh-rsa
+            PubkeyAcceptedAlgorithms +ssh-rsa
+            UserKnownHostsFile=/dev/null
+            StrictHostKeyChecking no
+        known_hosts: unnecessary
+
+    - name: Deploy via rsync
+      shell: bash
+      env:
+        REMOTE_HOST: ${{ inputs.remote-host }}
+        SOURCE_PATH: ${{ inputs.source-path }}
+        TARGET_PATH: ${{ inputs.target-path }}
+        IGNORE_FILE: ${{ inputs.ignore-file }}
+        EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
+        RSYNC_OPTIONS: ${{ inputs.rsync-options }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        SCRIPT_AFTER: ${{ inputs.script-after }}
+      run: |
+        START_TIME=$(date +%s)
+        bash "${{ github.action_path }}/deploy.sh"
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        echo "DEPLOY_DURATION=${DURATION}s" >> $GITHUB_ENV
+
+    - name: Prepare Slack notification
+      if: inputs.slack-webhook != '' && always()
+      shell: bash
+      run: |
+        # Get commit info
+        COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
+        COMMIT_SHORT="${GITHUB_SHA:0:7}"
+        ACTOR="${{ github.actor }}"
+        COMMIT_URL="https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}"
+        PROJECT_URL="${{ inputs.project-url }}"
+
+        if [ "${{ job.status }}" == "success" ]; then
+          # Array of deployment appreciation messages
+          MESSAGES=(
+            "@$ACTOR, outstanding deployment! Your precision keeps us running smooth."
+            "@$ACTOR, flawless execution! Another successful deploy."
+            "@$ACTOR, deployment champion! Your expertise shines through."
+            "@$ACTOR, smooth deployment! Everything went like clockwork."
+            "@$ACTOR, excellent work on the deployment! Systems are stable and happy."
+            "@$ACTOR, zero-downtime deployment! Your planning paid off."
+            "@$ACTOR, clean deployment! No issues, no rollbacks, just excellence."
+            "@$ACTOR, textbook deployment! This is how it's done right."
+            "@$ACTOR, deployment success! Your communication made this seamless."
+            "@$ACTOR, great collaboration on this deployment! Teamwork at its best."
+            "@$ACTOR, smooth deploy! The team appreciates your coordination."
+            "@$ACTOR, deployment complete! On time and on target."
+            "@$ACTOR, shipping excellence! Quality from start to finish."
+            "@$ACTOR, successful deployment! Your dedication got us here."
+            "@$ACTOR, another win for code quality! Well done."
+            "@$ACTOR, deployment delivered! Users are going to love this."
+            "@$ACTOR, well-executed deployment! Professional as always."
+            "@$ACTOR, solid deployment! Your attention to detail shows."
+            "@$ACTOR, deployment success! Everything working perfectly."
+            "@$ACTOR, great deploy! Your expertise makes this look easy."
+          )
+
+          # Pick a random message
+          RANDOM_MSG="${MESSAGES[$RANDOM % ${#MESSAGES[@]}]}"
+
+          echo "SLACK_COLOR=good" >> $GITHUB_ENV
+          echo "SLACK_TITLE=:rocket: Deployment Successful" >> $GITHUB_ENV
+          {
+            echo 'SLACK_MESSAGE<<EOF'
+            echo "*Project:* <https://${PROJECT_URL}|${PROJECT_URL}>"
+            echo "*Commit:* <$COMMIT_URL|$COMMIT_SHORT> - $COMMIT_MSG"
+            echo "*Deployed by:* $ACTOR"
+            echo "*Branch:* ${GITHUB_REF#refs/heads/}"
+            echo "*Duration:* $DEPLOY_DURATION"
+            echo "*Status:* ✓ Deployment completed successfully"
+            echo 'EOF'
+          } >> $GITHUB_ENV
+          echo "SLACK_FOOTER=$RANDOM_MSG" >> $GITHUB_ENV
+        else
+          echo "SLACK_COLOR=danger" >> $GITHUB_ENV
+          echo "SLACK_TITLE=:x: Deployment Failed" >> $GITHUB_ENV
+          {
+            echo 'SLACK_MESSAGE<<EOF'
+            echo "*Project:* <https://${PROJECT_URL}|${PROJECT_URL}>"
+            echo "*Commit:* <$COMMIT_URL|$COMMIT_SHORT> - $COMMIT_MSG"
+            echo "*Deployed by:* $ACTOR"
+            echo "*Branch:* ${GITHUB_REF#refs/heads/}"
+            echo "*Status:* ✗ Deployment failed - Check workflow logs"
+            echo 'EOF'
+          } >> $GITHUB_ENV
+          echo "SLACK_FOOTER=We'll get this fixed. Failures are just learning opportunities." >> $GITHUB_ENV
+        fi
+
+    - name: Send Slack notification
+      uses: rtCamp/action-slack-notify@master
+      if: |
+        always() && inputs.slack-webhook != '' && (
+          (inputs.slack-notify == 'always') ||
+          (inputs.slack-notify == 'success' && success()) ||
+          (inputs.slack-notify == 'failure' && failure())
+        )
+      env:
+        SLACK_WEBHOOK: ${{ inputs.slack-webhook }}
+        SLACK_CHANNEL: ${{ inputs.slack-channel }}
+        SLACK_COLOR: ${{ env.SLACK_COLOR }}
+        SLACK_TITLE: ${{ env.SLACK_TITLE }}
+        SLACK_MESSAGE: ${{ env.SLACK_MESSAGE }}
+        SLACK_USERNAME: 'GitHub Actions'
+        SLACK_FOOTER: ${{ env.SLACK_FOOTER }}
+        MSG_MINIMAL: true
