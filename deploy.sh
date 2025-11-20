@@ -25,13 +25,8 @@ log_warning() {
 # VALIDATE REQUIRED VARIABLES
 #########################################
 
-if [[ -z "$TARGET_PATH" || "$TARGET_PATH" == "/" || ! "$TARGET_PATH" =~ ^[a-zA-Z0-9/_\.\-]+$ || "$TARGET_PATH" != */* ]]; then
-  log_error "TARGET_PATH is invalid or unsafe: '$TARGET_PATH'"
-  exit 1
-fi
-
-if [[ "$TARGET_PATH" == *".."* ]]; then
-  log_error "TARGET_PATH cannot contain '..' (directory traversal): '$TARGET_PATH'"
+if [[ -z "$TARGET_PATH" ]]; then
+  log_error "TARGET_PATH is required"
   exit 1
 fi
 
@@ -39,13 +34,6 @@ if [[ -z "$SOURCE_PATH" ]]; then
   log_error "SOURCE_PATH is required"
   exit 1
 fi
-
-# Make critical variables immutable
-readonly TARGET_PATH
-readonly SOURCE_PATH
-readonly REMOTE_HOST
-readonly IGNORE_FILE
-readonly EXCLUDE_PATHS
 
 #########################################
 # PREPARE REMOTE PATH
@@ -63,40 +51,24 @@ fi
 # BUILD EXCLUSION LIST
 #########################################
 
-# Always exclude these (hardcoded sensible defaults)
-DEFAULT_EXCLUSIONS=(
-  # Node modules (never deploy this)
-  'node_modules/'
+RSYNC_EXCLUDE_ARGS=(
+  "--exclude=node_modules/"
 )
 
-# Build rsync exclude arguments from defaults
-RSYNC_EXCLUDE_ARGS=()
-for pattern in "${DEFAULT_EXCLUSIONS[@]}"; do
-  RSYNC_EXCLUDE_ARGS+=("--exclude=$pattern")
-done
+if [[ -n "${IGNORE_FILE:-}" && -f "$GITHUB_WORKSPACE/$IGNORE_FILE" ]]; then
+  echo "→ Reading exclusions from: $IGNORE_FILE"
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [[ -z "$line" ]] && continue
 
-# Add custom ignore file if it exists
-if [[ -n "$IGNORE_FILE" && -f "$GITHUB_WORKSPACE/$IGNORE_FILE" ]]; then
-  echo "→ Using ignore file: $IGNORE_FILE"
-  RSYNC_EXCLUDE_ARGS+=("--exclude-from=$GITHUB_WORKSPACE/$IGNORE_FILE")
-else
-  echo "ℹ No ignore file found (${IGNORE_FILE:-not specified})"
-fi
-
-# Add manual exclude paths
-if [[ -n "$EXCLUDE_PATHS" ]]; then
-  echo "→ Adding manual exclusion paths..."
-  # Split by comma or newline
-  IFS=$',\n'
-  for path in $EXCLUDE_PATHS; do
-    # Trim whitespace
-    path=$(echo "$path" | xargs)
-    if [[ -n "$path" ]]; then
-      RSYNC_EXCLUDE_ARGS+=("--exclude=$path")
-      echo "   - $path"
+    if [[ "$line" =~ ^! ]]; then
+      pattern="${line#!}"
+      RSYNC_EXCLUDE_ARGS+=("--include=$pattern")
+    else
+      RSYNC_EXCLUDE_ARGS+=("--exclude=$line")
     fi
-  done
-  unset IFS
+  done < "$GITHUB_WORKSPACE/$IGNORE_FILE"
 fi
 
 #########################################

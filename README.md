@@ -50,13 +50,6 @@ Deploy a WordPress site with automatic vendor installation and cache flushing:
     remote-key: ${{ secrets.DEPLOY_KEY }}
     target-path: /var/www/example.com/wp-content
     ignore-file: .distignore
-    exclude-paths: |
-      uploads/
-      upgrade/
-      cache/
-      backup/
-      w3tc-config/
-      wflogs/
     script-before: composer install --no-dev --optimize-autoloader
     script-after: |
       wp cache flush --allow-root
@@ -77,12 +70,6 @@ Deploy Laravel with database migrations and cache clearing:
     remote-key: ${{ secrets.DEPLOY_KEY }}
     target-path: /var/www/laravel-app
     ignore-file: .distignore
-    exclude-paths: |
-      storage/logs/
-      storage/framework/cache/
-      .env
-      .env.backup
-      tests/
     script-before: |
       composer install --no-dev --optimize-autoloader
       npm ci && npm run build
@@ -105,11 +92,7 @@ Deploy a Node.js app with PM2 reload:
     remote-user: deploy
     remote-key: ${{ secrets.DEPLOY_KEY }}
     target-path: /var/www/node-app
-    exclude-paths: |
-      coverage/
-      .env
-      .env.local
-      *.log
+    ignore-file: .distignore
     script-before: |
       npm ci
       npm run build
@@ -161,27 +144,9 @@ Preview what would be deployed without actually deploying:
     dry-run: true
 ```
 
-### Advanced Exclusions
-
-Combine custom exclude file and manual exclusions:
-
-```yaml
-- uses: sultann/remote-deploy-action@v1
-  with:
-    remote-host: ${{ secrets.DEPLOY_HOST }}
-    remote-user: deploy
-    remote-key: ${{ secrets.DEPLOY_KEY }}
-    target-path: /var/www/app
-    ignore-file: .deployignore
-    exclude-paths: |
-      temp/
-      *.log
-      debug.php
-```
-
 ### Slack Notifications
 
-Get notified in Slack for all deployments with custom channel:
+Get notified in Slack for all deployments:
 
 ```yaml
 - uses: sultann/remote-deploy-action@v1
@@ -191,7 +156,6 @@ Get notified in Slack for all deployments with custom channel:
     remote-key: ${{ secrets.DEPLOY_KEY }}
     target-path: /var/www/app
     slack-webhook: ${{ secrets.SLACK_WEBHOOK }}
-    slack-channel: '#deployments'
     slack-notify: always
     project-url: https://myapp.com
 ```
@@ -208,29 +172,18 @@ Get notified in Slack for all deployments with custom channel:
 | `remote-port` | Remote SSH port | No | `22` |
 | `source-path` | Local source directory relative to workspace | No | `./` |
 | `target-path` | Remote target directory (absolute path) | Yes | - |
-| `ignore-file` | Path to exclusion file | No | `.distignore` |
-| `exclude-paths` | Additional paths to exclude (comma or newline separated) | No | `` |
+| `ignore-file` | Path to exclusion file (supports negation with `!`) | No | `.distignore` |
 | `script-before` | Script to run locally before deployment | No | - |
 | `script-after` | Script to run on remote server after deployment | No | - |
 | `dry-run` | Preview deployment without actually deploying | No | `false` |
 | `rsync-options` | Custom rsync options | No | `-avz --delete` |
 | `slack-webhook` | Slack webhook URL for notifications | No | - |
-| `slack-channel` | Slack channel to override webhook default | No | - |
 | `slack-notify` | When to send Slack notification | No | `success` |
 | `project-url` | Project URL for notifications | No | Repository name |
 
 ### Default Exclusions
 
-The action **always** excludes these files/directories (hardcoded):
-
-```
-.*              # All dotfiles and dotfolders (.git, .github, .env, .DS_Store, etc.)
-node_modules/   # Node.js dependencies
-```
-
-This means all hidden files/directories (starting with `.`) are excluded by default, which covers `.git/`, `.github/`, `.gitignore`, `.env`, `.DS_Store`, `.cache/`, and other dotfiles.
-
-You can add additional exclusions using `ignore-file` and/or `exclude-paths`.
+The action **always** excludes `node_modules/` by default. You can add additional exclusions using the `ignore-file` parameter.
 
 ### Ignore File Format
 
@@ -319,7 +272,7 @@ Or manually append it to `~/.ssh/authorized_keys` on the remote server.
 
 **No changes detected**
 
-The action excluded everything. Check your `ignore-file` and `exclude-paths`. Run with `dry-run: true` to see what would be deployed.
+The action excluded everything. Check your `ignore-file`. Run with `dry-run: true` to see what would be deployed.
 
 **Permission denied (publickey)**
 
@@ -363,8 +316,6 @@ The command (like `wp`, `php artisan`, `pm2`) isn't in the PATH or not installed
 3. **Private Keys**: SSH private keys are handled securely by GitHub Secrets and never exposed in logs. Never commit private keys to your repository.
 
 4. **script-after Commands**: Commands in `script-after` run with the remote user's permissions. Ensure your deployment user has minimal necessary permissions (not root).
-
-5. **Directory Traversal**: The action validates `target-path` to prevent directory traversal attacks (`..` is blocked).
 
 ## Examples
 
@@ -413,15 +364,10 @@ jobs:
           remote-key: ${{ secrets.DEPLOY_KEY }}
           target-path: /var/www/example.com/wp-content
           ignore-file: .distignore
-          exclude-paths: |
-            uploads/
-            cache/
-            backup/
           script-after: |
             wp cache flush --allow-root
             wp transient delete --all --allow-root
           slack-webhook: ${{ secrets.SLACK_WEBHOOK }}
-          slack-channel: '#deployments'
           project-url: https://example.com
 ```
 

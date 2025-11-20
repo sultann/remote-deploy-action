@@ -35,10 +35,6 @@ inputs:
     description: 'Path to ignore file (.distignore, .deployignore, etc.)'
     required: false
     default: '.distignore'
-  exclude-paths:
-    description: 'Paths to exclude (comma or newline separated).'
-    required: false
-    default: '.*,tests,*.log'
 
   # Scripts
   script-before:
@@ -63,10 +59,6 @@ inputs:
   # Notifications
   slack-webhook:
     description: 'Slack webhook URL for notifications'
-    required: false
-    default: ''
-  slack-channel:
-    description: 'Slack channel to override webhook default (e.g., #deployments)'
     required: false
     default: ''
   slack-notify:
@@ -132,7 +124,6 @@ runs:
         SOURCE_PATH: ${{ inputs.source-path }}
         TARGET_PATH: ${{ inputs.target-path }}
         IGNORE_FILE: ${{ inputs.ignore-file }}
-        EXCLUDE_PATHS: ${{ inputs.exclude-paths }}
         RSYNC_OPTIONS: ${{ inputs.rsync-options }}
         DRY_RUN: ${{ inputs.dry-run }}
         SCRIPT_AFTER: ${{ inputs.script-after }}
@@ -228,7 +219,6 @@ runs:
         )
       env:
         SLACK_WEBHOOK: ${{ inputs.slack-webhook }}
-        SLACK_CHANNEL: ${{ inputs.slack-channel }}
         SLACK_COLOR: ${{ env.SLACK_COLOR }}
         SLACK_TITLE: ${{ env.SLACK_TITLE }}
         SLACK_MESSAGE: ${{ env.SLACK_MESSAGE }}
