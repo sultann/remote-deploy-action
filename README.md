@@ -408,23 +408,6 @@ jobs:
           project-url: https://example.com
 ```
 
-## Version & Release Notes
-
-When referencing this action in your workflow, you can use:
-
-- `@v1` - Latest v1.x release (recommended for stability)
-- `@v1.0.0` - Specific version (for maximum reproducibility)
-- `@main` - Latest commit (not recommended for production)
-
-After your first release, create a git tag:
-
-```bash
-git tag -a v1.0.0 -m "First release"
-git push origin v1.0.0
-git tag -a v1 -m "v1 major version"
-git push origin v1 --force  # Update v1 tag to latest v1.x
-```
-
 ## License
 
 MIT License. Use this however you want.
